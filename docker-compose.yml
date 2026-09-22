@@ -19,7 +19,16 @@ services:
     # Avoid 9.0.0-rc.x: those are pre-releases.
     image: midnightntwrk/proof-server:8.1.0
     container_name: sealedbid-proof-server
-    command: ['midnight-proof-server -v']
+    # No -v: verbose mode eagerly prefetches every proving parameter at startup,
+    # which is slow and fails outright on networks that rate-limit the burst.
+    # Default (quiet) mode fetches each parameter on demand as proofs are built.
+    command: ['midnight-proof-server']
+    # The proof server downloads its proving parameters from srs.midnight.network
+    # on first use, so it needs working outbound DNS and egress. The built-in
+    # bridge network is used explicitly because user-defined bridge networks are
+    # blocked from the public internet in some sandboxes and CI images, which
+    # makes the parameter fetch fail with "Giving up" at startup.
+    network_mode: bridge
     ports:
       - '6300:6300'
     environment:
