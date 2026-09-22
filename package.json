@@ -1,0 +1,60 @@
+{
+  "name": "sealedbid",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SealedBid — privacy-preserving sealed-bid auctions on the Midnight Network",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "compile": "compact compile contracts/sealed-bid.compact contracts/managed/sealed-bid",
+    "verify:artifacts": "node scripts/verify-artifacts.mjs",
+    "verify": "npm run compile && npm run typecheck && npm test && npm run verify:artifacts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "wallet:address": "tsx src/wallet-address.ts",
+    "network": "tsx src/network.ts",
+    "check-balance": "tsx src/check-balance.ts",
+    "setup": "tsx src/setup.ts",
+    "deploy": "tsx src/deploy.ts",
+    "cli": "tsx src/cli.ts",
+    "test:e2e": "tsx scripts/e2e-check.ts",
+    "proof-server:start": "docker compose up -d --wait proof-server",
+    "proof-server:stop": "docker compose down",
+    "clean": "node scripts/clean.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@scure/bip39": "2.2.0",
+    "rxjs": "^7.8.2",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "midnight",
+    "blockchain",
+    "zero-knowledge",
+    "privacy",
+    "compact",
+    "auction"
+  ]
+}
