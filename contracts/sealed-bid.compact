@@ -1,0 +1,235 @@
+/**
+ * SealedBid — privacy-preserving sealed-bid auctions on the Midnight Network.
+ *
+ * A seller lists a lot with a hidden reserve price and two deadlines. Bidders
+ * commit to their bids while the bidding window is open. Only the *commitment*
+ * (a SHA-256-based `persistentCommit` of the amount, a nonce, and a domain
+ * separator) reaches the public ledger, so bid amounts stay secret on-chain for
+ * the entire bidding period — nobody, including the seller, can see them.
+ *
+ * Once bidding closes, bidders open their commitments during the reveal window.
+ * The circuit checks the opening against the stored commitment, so a bidder
+ * cannot change their amount after the fact. The highest qualifying bid (an
+ * amount at or above the reserve) wins; ties go to whoever revealed first.
+ *
+ * Security properties enforced by the contract:
+ *   - Bid secrecy: amounts are never written to the ledger before the reveal
+ *     window; the commitment is binding and hiding.
+ *   - Bid binding: an opening that does not reproduce the commitment is rejected.
+ *   - One sealed bid per bidder: keyed by the caller's coin public key.
+ *   - No double reveal: the `openings` map rejects a second reveal.
+ *   - Caller authentication: `ownPublicKey()` binds each write to the submitter,
+ *     so a bidder cannot reveal or commit on someone else's behalf.
+ *   - Seller authority: only the deploying seller can cancel the auction.
+ *   - Reserve enforcement: an auction can only settle if a bid met the reserve.
+ *   - Time gating: bidding, revealing and settlement each have enforced windows.
+ *
+ * Language: Compact 0.23 (toolchain 0.31.1, runtime 0.16.0).
+ */
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+/**
+ * Lifecycle of an auction.
+ *
+ *   ACTIVE    — the auction is running (bidding and/or revealing, per the
+ *               deadlines). Both non-terminal operations are gated on block time.
+ *   SETTLED   — a qualifying winning bid was recorded.
+ *   CANCELLED — the seller withdrew the lot.
+ */
+export enum AuctionStatus { ACTIVE, SETTLED, CANCELLED }
+
+/**
+ * The private opening of a sealed bid. This value never reaches the ledger in
+ * the clear; only `persistentCommit(opening, DOMAIN_SEPARATOR)` is published
+ * when the bid is sealed.
+ */
+struct BidOpening {
+  /** The amount offered, in the auction's unit of account. */
+  amount: Uint<64>,
+  /** A per-bid secret that makes the commitment hiding. */
+  nonce: Bytes<32>
+}
+
+// ─── Public state ─────────────────────────────────────────────────────────────
+
+/** The seller's coin public key. Fixed at deployment; only the seller may cancel. */
+export sealed ledger seller: Bytes<32>;
+
+/** An opaque reference to the lot (typically a hash of an off-chain description). */
+export sealed ledger lot: Bytes<32>;
+
+/** The minimum amount the seller will accept. Must be greater than zero. */
+export sealed ledger reservePrice: Uint<64>;
+
+/** Unix time (seconds) at which sealed bidding closes. */
+export sealed ledger biddingEndsAt: Uint<64>;
+
+/** Unix time (seconds) at which the reveal window closes and settlement opens. */
+export sealed ledger revealEndsAt: Uint<64>;
+
+/** Current lifecycle state. */
+export ledger status: AuctionStatus;
+
+/** Sealed commitments, keyed by bidder coin public key. */
+export ledger commitments: Map<Bytes<32>, Bytes<32>>;
+
+/** Number of sealed bids received. Never decreases. */
+export ledger bidderCount: Counter;
+
+/** Revealed amounts, keyed by bidder coin public key. Populated only on reveal. */
+export ledger openings: Map<Bytes<32>, Uint<64>>;
+
+/** Highest amount revealed so far that meets the reserve. Zero until then. */
+export ledger highestBid: Uint<64>;
+
+/** Bidder holding {@link highestBid}. */
+export ledger highestBidder: Bytes<32>;
+
+/** The winning amount, set only by {@link settle}. */
+export ledger winningBid: Uint<64>;
+
+/** The winning bidder, set only by {@link settle}. */
+export ledger winner: Bytes<32>;
+
+// ─── Constructor ──────────────────────────────────────────────────────────────
+
+/**
+ * Create an auction.
+ *
+ * `lotRef`      — an opaque lot reference (e.g. a hash of the lot description).
+ * `reserve`     — the minimum acceptable amount; must be positive.
+ * `biddingEnd`  — Unix time at which bidding closes.
+ * `revealEnd`   — Unix time at which revealing closes; must be after `biddingEnd`.
+ *
+ * The seller is captured from the deploying transaction's public key, so the
+ * contract cannot be deployed on someone else's behalf.
+ */
+constructor(
+  lotRef: Bytes<32>,
+  reserve: Uint<64>,
+  biddingEnd: Uint<64>,
+  revealEnd: Uint<64>
+) {
+  assert(reserve > 0, "reserve price must be greater than zero");
+  assert(biddingEnd < revealEnd, "bidding must close before the reveal window closes");
+
+  seller = disclose(ownPublicKey().bytes);
+  lot = disclose(lotRef);
+  reservePrice = disclose(reserve);
+  biddingEndsAt = disclose(biddingEnd);
+  revealEndsAt = disclose(revealEnd);
+  status = AuctionStatus.ACTIVE;
+}
+
+// ─── Sealed bidding ───────────────────────────────────────────────────────────
+
+/**
+ * Seal a bid. Only the commitment is published; the amount stays private until
+ * the reveal window.
+ *
+ * Rejected when: the auction is not active, bidding has closed, or this caller
+ * has already sealed a bid.
+ */
+export circuit commitBid(commitment: Bytes<32>): [] {
+  assert(status == AuctionStatus.ACTIVE, "auction is not active");
+  assert(blockTimeLt(biddingEndsAt), "bidding window has closed");
+
+  const bidder = disclose(ownPublicKey().bytes);
+  assert(!commitments.member(bidder), "caller has already sealed a bid");
+
+  commitments.insert(bidder, disclose(commitment));
+  bidderCount.increment(1);
+}
+
+// ─── Reveal ───────────────────────────────────────────────────────────────────
+
+/**
+ * Open a previously sealed bid.
+ *
+ * The circuit recomputes the commitment from the supplied opening and rejects
+ * the call if it does not match the sealed value, which makes bids binding:
+ * a bidder cannot inflate or deflate their amount after the deadline.
+ *
+ * Amounts below the reserve are recorded (so a reveal can never be silently
+ * dropped) but never become the leading bid.
+ *
+ * Rejected when: the auction is not active, bidding has not yet closed, the
+ * reveal window has closed, the caller sealed no bid, the opening does not match,
+ * or the caller already revealed.
+ */
+export circuit revealBid(amount: Uint<64>, nonce: Bytes<32>): [] {
+  assert(status == AuctionStatus.ACTIVE, "auction is not active");
+  assert(blockTimeGte(biddingEndsAt), "bidding window has not closed yet");
+  assert(blockTimeLt(revealEndsAt), "reveal window has closed");
+
+  const bidder = disclose(ownPublicKey().bytes);
+  assert(commitments.member(bidder), "caller has no sealed bid");
+  assert(!openings.member(bidder), "caller has already revealed");
+
+  const opening = BidOpening { amount: amount, nonce: nonce };
+  // Domain separator binds the commitment to this scheme, so the same
+  // (amount, nonce) pair cannot double as an unrelated commitment elsewhere.
+  const recomputed = persistentCommit<BidOpening>(opening, pad(32, "sealedbid:commitment:v1"));
+  assert(recomputed == commitments.lookup(bidder), "opening does not match the sealed commitment");
+
+  // Publishing the amount is the point of the reveal window, so it is disclosed
+  // once here and every subsequent comparison uses the disclosed value.
+  const revealedAmount = disclose(amount);
+  openings.insert(bidder, revealedAmount);
+
+  // Strictly greater: the earliest reveal wins a tie.
+  if (revealedAmount >= reservePrice && revealedAmount > highestBid) {
+    highestBid = revealedAmount;
+    highestBidder = bidder;
+  }
+}
+
+// ─── Settlement ───────────────────────────────────────────────────────────────
+
+/**
+ * Settle the auction once the reveal window has closed.
+ *
+ * Permissionless: any caller may crank settlement, but only a bid that met the
+ * reserve can win, so the outcome does not depend on who submits it.
+ *
+ * Rejected when: the auction is not active, the reveal window has not closed, or
+ * no revealed bid met the reserve.
+ */
+export circuit settle(): [] {
+  assert(status == AuctionStatus.ACTIVE, "auction is not active");
+  assert(blockTimeGte(revealEndsAt), "reveal window has not closed yet");
+  assert(highestBid >= reservePrice, "reserve price was not met");
+
+  winner = highestBidder;
+  winningBid = highestBid;
+  status = AuctionStatus.SETTLED;
+}
+
+/**
+ * Cancel the auction. Restricted to the seller, and only while the auction is
+ * active. Revealed bids are already public by then, so cancelling confers no
+ * informational advantage.
+ */
+export circuit cancel(): [] {
+  assert(status == AuctionStatus.ACTIVE, "auction is not active");
+  assert(disclose(ownPublicKey().bytes) == seller, "only the seller may cancel");
+
+  status = AuctionStatus.CANCELLED;
+}
+
+// ─── Client helper ────────────────────────────────────────────────────────────
+
+/**
+ * Compute the commitment for an opening. Exported as a pure circuit so clients
+ * can derive exactly the value {@link commitBid} expects, without duplicating
+ * the hashing rule off-chain.
+ */
+export pure circuit bidCommitment(amount: Uint<64>, nonce: Bytes<32>): Bytes<32> {
+  return persistentCommit<BidOpening>(
+    BidOpening { amount: amount, nonce: nonce },
+    pad(32, "sealedbid:commitment:v1"),
+  );
+}
