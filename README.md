@@ -274,21 +274,59 @@ npm run setup      # docker compose up + compile + deploy
 
 ### Preview or Preprod
 
+#### Step 1 — Get your wallet address
+
+The funding address is derived from your wallet and printed with a dedicated
+command (no sync, no funds, no proof server needed):
+
 ```bash
-# 1. Start the proof server (required on every network)
+npm run wallet:address -- --network preprod
+```
+
+```
+  Network:            preprod
+  Unshielded address: mn_addr_preprod1…
+  Faucet:             https://midnight-tmnight-preprod.nethermind.dev
+```
+
+Copy the `mn_addr_preprod1…` line — that is the address you fund.
+
+Where it lives in the project:
+
+| What | Where |
+|---|---|
+| Command that prints the address | `src/wallet-address.ts` (`npm run wallet:address`) |
+| Wallet seed + recovery phrase | `.midnight-state.json` → `wallets.preprod` (gitignored, mode `0600`) |
+| Generation / persistence logic | `src/network.ts` → `getOrCreateWallet()` |
+
+The first run generates a 24-word phrase, derives the address from it and
+persists both in `.midnight-state.json`. Every later run re-derives the **same**
+address. Back the phrase up with `npm run wallet:address -- --show-mnemonic`.
+
+#### Step 2 — Request test tokens (tNIGHT)
+
+1. Open the faucet for your network:
+   - Preprod: <https://midnight-tmnight-preprod.nethermind.dev>
+   - Preview: <https://midnight-tmnight-preview.nethermind.dev>
+2. Paste the `mn_addr_preprod1…` address into the faucet's recipient field.
+3. Submit the request (a captcha may be shown). tNIGHT is the testnet token —
+   it has no value and only pays transaction fees.
+4. Tokens usually arrive within a minute or two. Check with:
+
+```bash
+npm run check-balance -- --network preprod
+```
+
+#### Step 3 — Deploy
+
+```bash
+# Start the proof server (required on every network)
 npm run proof-server:start
 
-# 2. Generate a wallet and print its funding address (no sync required)
-npm run wallet:address -- --network preprod
-
-# 3. Fund that unshielded address from the faucet, e.g.
-#    https://midnight-tmnight-preprod.nethermind.dev
-#    (Preview: https://midnight-tmnight-preview.nethermind.dev)
-
-# 4. Deploy. It waits for tNIGHT, registers NIGHT for DUST, then submits.
+# Deploy. It waits for tNIGHT, registers NIGHT for DUST, then submits.
 npm run deploy -- --network preprod
 
-# 5. Verify the deployment end to end
+# Verify the deployment end to end
 npm run test:e2e -- --network preprod
 ```
 
