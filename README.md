@@ -357,6 +357,7 @@ The deployment address and deployer are written to `.midnight-state.json`
 |---|---|
 | **Network** | Midnight Preprod |
 | **Funding address (unshielded)** | `mn_addr_preprod19q06h059k4c2j96m39005thgekpryeqag30vsfjzdc4zjtdjylzsg7wcv2` |
+| **Preview funding address (unshielded)** | `mn_addr_preview1dke5v8z7uaxfu6sp2v0pwqpn0qa8m6lqqjqrhk3ptkn8pfe3nh3sklljdz` |
 | **Contract address** | *recorded after the deployment below* |
 | **Deployer (unshielded)** | *recorded after the deployment below* |
 | **Verification** | `npm run test:e2e -- --network preprod` (see below) |
