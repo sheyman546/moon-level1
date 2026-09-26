@@ -285,11 +285,11 @@ npm run wallet:address -- --network preprod
 
 ```
   Network:            preprod
-  Unshielded address: mn_addr_preprod19q06h059k4c2j96m39005thgekpryeqag30vsfjzdc4zjtdjylzsg7wcv2
+  Unshielded address: mn_addr_preprod18jez6c2mter8gh5h3ctukh8y52kq7wg40d2kdmnezwqsymtylmgsxu3u3n
   Faucet:             https://midnight-tmnight-preprod.nethermind.dev
 ```
 
-Copy the `mn_addr_preprod19q06h059k4c2j96m39005thgekpryeqag30vsfjzdc4zjtdjylzsg7wcv2` line — that is the address you fund.
+Copy the `mn_addr_preprod18jez6c2mter8gh5h3ctukh8y52kq7wg40d2kdmnezwqsymtylmgsxu3u3n` line — that is the address you fund.
 
 Where it lives in the project:
 
@@ -309,8 +309,8 @@ address. Back the phrase up with `npm run wallet:address -- --show-mnemonic`.
    - Preprod: <https://midnight-tmnight-preprod.nethermind.dev>
    - Preview: <https://midnight-tmnight-preview.nethermind.dev>
 2. Paste the address for that network into the faucet's recipient field:
-   - Preprod: `mn_addr_preprod19q06h059k4c2j96m39005thgekpryeqag30vsfjzdc4zjtdjylzsg7wcv2`
-   - Preview: `mn_addr_preview1dke5v8z7uaxfu6sp2v0pwqpn0qa8m6lqqjqrhk3ptkn8pfe3nh3sklljdz`
+   - Preprod: `mn_addr_preprod18jez6c2mter8gh5h3ctukh8y52kq7wg40d2kdmnezwqsymtylmgsxu3u3n`
+   - Preview: `mn_addr_preview1ljzp0vzlc343xwpxfn0xu5v6alwqzjrr69dutuf52nuyu6huus2spr9842`
 3. Submit the request (a captcha may be shown). tNIGHT is the testnet token —
    it has no value and only pays transaction fees.
 4. Tokens usually arrive within a minute or two. Check with:
@@ -358,8 +358,8 @@ The deployment address and deployer are written to `.midnight-state.json`
 | | |
 |---|---|
 | **Network** | Midnight Preprod |
-| **Funding address (unshielded)** | `mn_addr_preprod19q06h059k4c2j96m39005thgekpryeqag30vsfjzdc4zjtdjylzsg7wcv2` |
-| **Preview funding address (unshielded)** | `mn_addr_preview1dke5v8z7uaxfu6sp2v0pwqpn0qa8m6lqqjqrhk3ptkn8pfe3nh3sklljdz` |
+| **Funding address (unshielded)** | `mn_addr_preprod18jez6c2mter8gh5h3ctukh8y52kq7wg40d2kdmnezwqsymtylmgsxu3u3n` |
+| **Preview funding address (unshielded)** | `mn_addr_preview1ljzp0vzlc343xwpxfn0xu5v6alwqzjrr69dutuf52nuyu6huus2spr9842` |
 | **Contract address** | *recorded after the deployment below* |
 | **Deployer (unshielded)** | *recorded after the deployment below* |
 | **Verification** | `npm run test:e2e -- --network preprod` (see below) |
